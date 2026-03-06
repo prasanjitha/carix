@@ -1,11 +1,27 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:fluttertoast/fluttertoast.dart';
 import '../../theme/app_colors.dart';
+import '../../utils/formatters.dart';
 import '../main_tab/main_tab_screen.dart';
 
-class ServiceBaselineScreen extends StatefulWidget {
-  final VoidCallback onBack;
+import 'package:hive_flutter/hive_flutter.dart';
+import '../../models/vehicle_model.dart';
 
-  const ServiceBaselineScreen({super.key, required this.onBack});
+class ServiceBaselineScreen extends StatefulWidget {
+  final Map<String, dynamic> step1Data;
+  final Map<String, dynamic>? initialData;
+  final VoidCallback onBack;
+  final ValueChanged<Map<String, dynamic>> onDataChanged;
+
+  const ServiceBaselineScreen({
+    super.key,
+    required this.step1Data,
+    this.initialData,
+    required this.onBack,
+    required this.onDataChanged,
+  });
 
   @override
   State<ServiceBaselineScreen> createState() => _ServiceBaselineScreenState();
@@ -13,14 +29,67 @@ class ServiceBaselineScreen extends StatefulWidget {
 
 class _ServiceBaselineScreenState extends State<ServiceBaselineScreen> {
   DateTime? _lastServiceDate;
-  // ignore: unused_field
-  int _odometerAtLastService = 0; // Used in UI text field
+  int? _odometerAtLastService;
   int? _serviceCycle = 10000;
-  // ignore: unused_field
-  int _currentOdometer = 0; // Used in UI text field
+  int? _currentOdometer;
+  final TextEditingController _odometerAtLastServiceController =
+      TextEditingController();
+  final TextEditingController _currentOdometerController =
+      TextEditingController();
   final TextEditingController _customCycleController = TextEditingController();
 
   final List<int?> _serviceCycles = [5000, 10000, 15000, 20000, null];
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.initialData != null && widget.initialData!.isNotEmpty) {
+      final data = widget.initialData!;
+      _lastServiceDate = data['lastServiceDate'];
+      _odometerAtLastService = data['odometerAtLastService'];
+      _serviceCycle = data['serviceCycle'];
+      _currentOdometer = data['currentOdometer'];
+
+      _odometerAtLastServiceController.text =
+          ThousandsSeparatorInputFormatter.formatWithDecimals(
+            _odometerAtLastService?.toString() ?? '',
+          );
+      _currentOdometerController.text =
+          ThousandsSeparatorInputFormatter.formatWithDecimals(
+            _currentOdometer?.toString() ?? '',
+          );
+      _customCycleController.text =
+          ThousandsSeparatorInputFormatter.formatWithDecimals(
+            data['customCycle']?.toString() ?? '',
+          );
+    }
+
+    _odometerAtLastServiceController.addListener(() {
+      _odometerAtLastService = int.tryParse(
+        _odometerAtLastServiceController.text.replaceAll(',', ''),
+      );
+      _updateParentData();
+    });
+    _currentOdometerController.addListener(() {
+      _currentOdometer = int.tryParse(
+        _currentOdometerController.text.replaceAll(',', ''),
+      );
+      _updateParentData();
+    });
+    _customCycleController.addListener(_updateParentData);
+  }
+
+  void _updateParentData() {
+    widget.onDataChanged({
+      'lastServiceDate': _lastServiceDate,
+      'odometerAtLastService': _odometerAtLastService,
+      'serviceCycle': _serviceCycle,
+      'currentOdometer': _currentOdometer,
+      'customCycle': int.tryParse(
+        _customCycleController.text.replaceAll(',', ''),
+      ),
+    });
+  }
 
   Future<void> _selectDate(BuildContext context) async {
     final DateTime? picked = await showDatePicker(
@@ -49,24 +118,133 @@ class _ServiceBaselineScreenState extends State<ServiceBaselineScreen> {
       setState(() {
         _lastServiceDate = picked;
       });
+      _updateParentData();
     }
   }
 
   @override
   void dispose() {
+    _odometerAtLastServiceController.dispose();
+    _currentOdometerController.dispose();
     _customCycleController.dispose();
     super.dispose();
   }
 
+  void _showCustomToast(String message) {
+    final fToast = FToast();
+    fToast.init(context);
+
+    final isSuccess = message.toLowerCase().contains('success');
+    final gradientColors = isSuccess
+        ? [
+            const Color(0xFF10B981).withValues(alpha: 0.35),
+            const Color(0xFF059669).withValues(alpha: 0.15),
+          ]
+        : [
+            AppColors.primary.withValues(alpha: 0.35),
+            AppColors.primary.withValues(alpha: 0.15),
+          ];
+    final borderColor = isSuccess
+        ? const Color(0xFF10B981).withValues(alpha: 0.3)
+        : AppColors.primary.withValues(alpha: 0.3);
+
+    Widget toast = ClipRRect(
+      borderRadius: BorderRadius.circular(24.0),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 12.0),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(24.0),
+            gradient: LinearGradient(
+              colors: gradientColors,
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            border: Border.all(color: borderColor, width: 1.5),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                isSuccess ? Icons.check_circle_outline : Icons.error_outline,
+                color: Colors.white,
+                size: 20,
+              ),
+              const SizedBox(width: 10.0),
+              Text(
+                message,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    fToast.showToast(
+      child: toast,
+      gravity: ToastGravity.TOP_RIGHT,
+      toastDuration: const Duration(seconds: 3),
+    );
+  }
+
   void _finalizeAndStart() {
-    // ignore: unused_local_variable
-    final int finalCycle =
-        _serviceCycle ?? int.tryParse(_customCycleController.text) ?? 10000;
-    // Save to Hive logic (TODO)
-    // Navigate to Home
+    if (_lastServiceDate == null) {
+      _showCustomToast('Last Service Date is required');
+      return;
+    }
+
+    _odometerAtLastService = int.tryParse(
+      _odometerAtLastServiceController.text.replaceAll(',', '').trim(),
+    );
+    if (_odometerAtLastService == null) {
+      _showCustomToast('Odometer at Last Service is required');
+      return;
+    }
+
+    int finalCycle =
+        _serviceCycle ??
+        int.tryParse(_customCycleController.text.replaceAll(',', '').trim()) ??
+        0;
+    if (finalCycle <= 0) {
+      _showCustomToast('Valid Service Cycle is required');
+      return;
+    }
+
+    _currentOdometer = int.tryParse(
+      _currentOdometerController.text.replaceAll(',', '').trim(),
+    );
+    if (_currentOdometer == null) {
+      _showCustomToast('Current Odometer is required');
+      return;
+    }
+
+    final data = widget.step1Data;
+    final vehicle = VehicleModel(
+      vehicleNumber: data['vehicleNumber'],
+      brand: data['brand'],
+      modelName: data['modelName'],
+      fuelType: data['fuelType'],
+      odometer:
+          _currentOdometer!, // Using current odometer as the main odometer
+      avgKml: data['avgKml'],
+      nickname: data['nickname'],
+      colorHex: data['colorHex'],
+      lastServiceDate: _lastServiceDate,
+      odometerAtLastService: _odometerAtLastService,
+      serviceCycleKm: finalCycle,
+    );
+
+    final vehicleBox = Hive.box<VehicleModel>('vehicle_box');
+    vehicleBox.put('current_vehicle', vehicle);
+
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(builder: (context) => const MainTabScreen()),
-    ); // Placeholder route
+    );
   }
 
   @override
@@ -158,13 +336,12 @@ class _ServiceBaselineScreenState extends State<ServiceBaselineScreen> {
                 ),
                 const SizedBox(height: 8),
                 TextField(
+                  controller: _odometerAtLastServiceController,
                   keyboardType: TextInputType.number,
+                  inputFormatters: [ThousandsSeparatorInputFormatter()],
                   style: const TextStyle(color: Colors.white),
-                  onChanged: (val) => setState(
-                    () => _odometerAtLastService = int.tryParse(val) ?? 0,
-                  ),
                   decoration: const InputDecoration(
-                    hintText: 'e.g. 45000',
+                    hintText: 'e.g. 45,000',
                     suffixText: 'km',
                   ),
                 ),
@@ -197,6 +374,7 @@ class _ServiceBaselineScreenState extends State<ServiceBaselineScreen> {
                   }).toList(),
                   onChanged: (val) {
                     setState(() => _serviceCycle = val);
+                    _updateParentData();
                   },
                 ),
                 if (_serviceCycle == null) ...[
@@ -222,12 +400,12 @@ class _ServiceBaselineScreenState extends State<ServiceBaselineScreen> {
                 ),
                 const SizedBox(height: 8),
                 TextField(
+                  controller: _currentOdometerController,
                   keyboardType: TextInputType.number,
+                  inputFormatters: [ThousandsSeparatorInputFormatter()],
                   style: const TextStyle(color: Colors.white),
-                  onChanged: (val) =>
-                      setState(() => _currentOdometer = int.tryParse(val) ?? 0),
                   decoration: const InputDecoration(
-                    hintText: 'e.g. 48200',
+                    hintText: 'e.g. 48,200',
                     suffixText: 'km',
                   ),
                 ),

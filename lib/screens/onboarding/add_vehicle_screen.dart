@@ -1,20 +1,31 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:fluttertoast/fluttertoast.dart';
 import '../../theme/app_colors.dart';
+import '../../utils/formatters.dart';
 
 class AddVehicleScreen extends StatefulWidget {
-  final VoidCallback onNext;
+  final ValueChanged<Map<String, dynamic>> onNext;
+  final Map<String, dynamic>? initialData;
 
-  const AddVehicleScreen({super.key, required this.onNext});
+  const AddVehicleScreen({super.key, required this.onNext, this.initialData});
 
   @override
   State<AddVehicleScreen> createState() => _AddVehicleScreenState();
 }
 
 class _AddVehicleScreenState extends State<AddVehicleScreen> {
+  final TextEditingController _vehicleNumberController =
+      TextEditingController();
+  final TextEditingController _modelNameController = TextEditingController();
+  final TextEditingController _avgKmlController = TextEditingController();
+  final TextEditingController _nicknameController = TextEditingController();
+
   String _selectedBrand = '';
   String _selectedFuelType = '';
-  Color _selectedColor = Colors.blue;
-
+  Color _selectedColor =
+      Colors.white; // Defaulting to first in list (actually white is in list)
   String _selectedVehicleType = 'Car'; // Default selection
 
   final List<Map<String, dynamic>> _vehicleTypes = [
@@ -23,6 +34,29 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
     {'name': 'Bus', 'icon': Icons.directions_bus},
     {'name': 'Three-Wheel', 'icon': Icons.electric_rickshaw},
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.initialData != null && widget.initialData!.isNotEmpty) {
+      final data = widget.initialData!;
+      _vehicleNumberController.text = data['vehicleNumber'] ?? '';
+      _modelNameController.text = data['modelName'] ?? '';
+
+      final rawAvgKml = data['avgKml']?.toString() ?? '';
+      _avgKmlController.text = ThousandsSeparatorInputFormatter.formatString(
+        rawAvgKml,
+      );
+
+      _nicknameController.text = data['nickname'] ?? '';
+      _selectedBrand = data['brand'] ?? '';
+      _selectedFuelType = data['fuelType'] ?? '';
+      _selectedVehicleType = data['vehicleType'] ?? 'Car';
+      if (data['colorHex'] != null) {
+        _selectedColor = Color(int.parse(data['colorHex'], radix: 16));
+      }
+    }
+  }
 
   final List<Map<String, dynamic>> _carBrands = [
     // Japanese Brands (Most Popular in LK)
@@ -175,6 +209,124 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
     const Color(0xFFE0E0E0), // Platinum Silver
   ];
 
+  void _showCustomToast(String message) {
+    final fToast = FToast();
+    fToast.init(context);
+
+    final isSuccess = message.toLowerCase().contains('success');
+    final gradientColors = isSuccess
+        ? [
+            const Color(0xFF10B981).withValues(alpha: 0.35),
+            const Color(0xFF059669).withValues(alpha: 0.15),
+          ]
+        : [
+            AppColors.primary.withValues(alpha: 0.35),
+            AppColors.primary.withValues(alpha: 0.15),
+          ];
+    final borderColor = isSuccess
+        ? const Color(0xFF10B981).withValues(alpha: 0.3)
+        : AppColors.primary.withValues(alpha: 0.3);
+
+    Widget toast = ClipRRect(
+      borderRadius: BorderRadius.circular(24.0),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 12.0),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(24.0),
+            gradient: LinearGradient(
+              colors: gradientColors,
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            border: Border.all(color: borderColor, width: 1.5),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                isSuccess ? Icons.check_circle_outline : Icons.error_outline,
+                color: Colors.white,
+                size: 20,
+              ),
+              const SizedBox(width: 10.0),
+              Text(
+                message,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    fToast.showToast(
+      child: toast,
+      gravity: ToastGravity.TOP_RIGHT,
+      toastDuration: const Duration(seconds: 3),
+    );
+  }
+
+  void _validateAndContinue() {
+    final vehicleNumber = _vehicleNumberController.text.trim();
+    final modelName = _modelNameController.text.trim();
+    final avgKmlText = _avgKmlController.text.trim();
+    final nickname = _nicknameController.text.trim();
+
+    if (vehicleNumber.isEmpty) {
+      _showCustomToast('Vehicle Number is required');
+      return;
+    }
+    if (_selectedBrand.isEmpty) {
+      _showCustomToast('Brand is required');
+      return;
+    }
+    if (modelName.isEmpty) {
+      _showCustomToast('Model Name is required');
+      return;
+    }
+    if (_selectedFuelType.isEmpty) {
+      _showCustomToast('Fuel Type is required');
+      return;
+    }
+    if (avgKmlText.isEmpty) {
+      _showCustomToast('Avg. KM/L is required');
+      return;
+    }
+
+    double? avgKml = double.tryParse(avgKmlText.replaceAll(',', ''));
+    if (avgKml == null) {
+      _showCustomToast('Valid Avg. KM/L is required');
+      return;
+    }
+
+    final data = {
+      'vehicleNumber': 'WP $vehicleNumber', // Assuming prefix is handled
+      'brand': _selectedBrand,
+      'modelName': modelName,
+      'fuelType': _selectedFuelType,
+      'avgKml': avgKml,
+      'nickname': nickname.isEmpty ? 'My $_selectedVehicleType' : nickname,
+      'colorHex': _selectedColor.toARGB32().toRadixString(16).padLeft(8, '0'),
+      'vehicleType': _selectedVehicleType,
+    };
+
+    widget.onNext(data);
+  }
+
+  @override
+  void dispose() {
+    _vehicleNumberController.dispose();
+    _modelNameController.dispose();
+    _avgKmlController.dispose();
+    _nicknameController.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     return SingleChildScrollView(
@@ -199,6 +351,7 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
           ),
           const SizedBox(height: 8),
           TextField(
+            controller: _vehicleNumberController,
             style: const TextStyle(
               color: Colors.white,
               fontWeight: FontWeight.bold,
@@ -419,6 +572,7 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
           ),
           const SizedBox(height: 8),
           TextField(
+            controller: _modelNameController,
             style: const TextStyle(
               color: Colors.white,
               fontWeight: FontWeight.bold,
@@ -512,87 +666,9 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
             }).toList(),
           ),
           const SizedBox(height: 24),
-
           // Odometer & Avg KM/L Row
           Row(
             children: [
-              Expanded(
-                child: Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.05),
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(
-                      color: Colors.white.withValues(alpha: 0.1),
-                    ),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: const [
-                          Icon(Icons.speed, size: 14, color: AppColors.primary),
-                          SizedBox(width: 4),
-                          Text(
-                            'ODOMETER',
-                            style: TextStyle(
-                              color: Colors.white70,
-                              fontSize: 10,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          Expanded(
-                            child: TextField(
-                              keyboardType: TextInputType.number,
-                              style: const TextStyle(
-                                fontSize: 20,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.white,
-                              ),
-                              decoration: InputDecoration(
-                                hintText: '42,000',
-                                hintStyle: TextStyle(
-                                  color: Colors.white.withValues(alpha: 0.3),
-                                ),
-                                isDense: true,
-                                contentPadding: const EdgeInsets.symmetric(
-                                  vertical: 4,
-                                ),
-                                enabledBorder: UnderlineInputBorder(
-                                  borderSide: BorderSide(
-                                    color: Colors.white.withValues(alpha: 0.2),
-                                  ),
-                                ),
-                                focusedBorder: const UnderlineInputBorder(
-                                  borderSide: BorderSide(
-                                    color: AppColors.primary,
-                                  ),
-                                ),
-                                filled: false,
-                              ),
-                            ),
-                          ),
-                          const Text(
-                            'KM',
-                            style: TextStyle(
-                              color: Colors.white70,
-                              fontSize: 10,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(width: 16),
               Expanded(
                 child: Container(
                   padding: const EdgeInsets.all(16),
@@ -616,9 +692,11 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
                       ),
                       const SizedBox(height: 8),
                       TextField(
+                        controller: _avgKmlController,
                         keyboardType: const TextInputType.numberWithOptions(
                           decimal: true,
                         ),
+                        inputFormatters: [ThousandsSeparatorInputFormatter()],
                         style: const TextStyle(
                           fontSize: 20,
                           fontWeight: FontWeight.bold,
@@ -663,6 +741,7 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
           ),
           const SizedBox(height: 8),
           TextField(
+            controller: _nicknameController,
             style: const TextStyle(
               color: Colors.white,
               fontWeight: FontWeight.bold,
@@ -780,7 +859,7 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
               color: Colors.transparent,
               child: InkWell(
                 borderRadius: BorderRadius.circular(24),
-                onTap: widget.onNext,
+                onTap: _validateAndContinue,
                 child: const Center(
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,

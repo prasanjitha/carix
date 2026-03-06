@@ -16,6 +16,9 @@ class _OnboardingWrapperState extends State<OnboardingWrapper> {
   final PageController _pageController = PageController();
   int _currentIndex = 0;
 
+  Map<String, dynamic> _step1Data = {};
+  Map<String, dynamic> _step2Data = {};
+
   void _nextPage() {
     if (_currentIndex < 2) {
       _pageController.nextPage(
@@ -23,6 +26,13 @@ class _OnboardingWrapperState extends State<OnboardingWrapper> {
         curve: Curves.easeInOut,
       );
     }
+  }
+
+  void _nextPageFromVehicle(Map<String, dynamic> data) {
+    setState(() {
+      _step1Data = data;
+    });
+    _nextPage();
   }
 
   void _previousPage() {
@@ -98,8 +108,20 @@ class _OnboardingWrapperState extends State<OnboardingWrapper> {
                   },
                   children: [
                     AuthScreen(onNext: _nextPage),
-                    AddVehicleScreen(onNext: _nextPage),
-                    ServiceBaselineScreen(onBack: _previousPage),
+                    AddVehicleScreen(
+                      onNext: _nextPageFromVehicle,
+                      initialData: _step1Data,
+                    ),
+                    ServiceBaselineScreen(
+                      step1Data: _step1Data,
+                      initialData: _step2Data,
+                      onBack: _previousPage,
+                      onDataChanged: (data) {
+                        setState(() {
+                          _step2Data = data;
+                        });
+                      },
+                    ),
                   ],
                 ),
               ),
