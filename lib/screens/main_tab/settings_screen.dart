@@ -2,6 +2,8 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 
 import '../../theme/app_colors.dart';
+import 'package:hive_flutter/hive_flutter.dart';
+import '../onboarding/login_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -133,6 +135,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     onDistanceChanged: (value) =>
                         setState(() => _distanceUnit = value),
                   ),
+                  const SizedBox(height: 24),
+                  const _SectionLabel('ACCOUNT ACTIONS'),
+                  const SizedBox(height: 12),
+                  const _LogoutActionCard(),
                   const SizedBox(height: 24),
                   const _SectionLabel('SUPPORT'),
                   const SizedBox(height: 12),
@@ -1075,6 +1081,58 @@ class _SegmentedControl extends StatelessWidget {
             ),
           );
         }).toList(),
+      ),
+    );
+  }
+}
+
+class _LogoutActionCard extends StatelessWidget {
+  const _LogoutActionCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      height: 56,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            Colors.white.withValues(alpha: 0.15),
+            const Color(0xFFE11D48).withValues(alpha: 0.1),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: const Color(0xFFE11D48).withValues(alpha: 0.2),
+        ),
+      ),
+      child: ElevatedButton.icon(
+        onPressed: () async {
+          final userBox = Hive.box('user_box');
+          await userBox.put('isLoggedIn', false);
+          if (context.mounted) {
+            Navigator.of(context).pushAndRemoveUntil(
+              MaterialPageRoute(builder: (context) => const LoginScreen()),
+              (route) => false,
+            );
+          }
+        },
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Colors.transparent,
+          foregroundColor: const Color(0xFFE11D48),
+          shadowColor: Colors.transparent,
+          elevation: 0,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
+        ),
+        icon: const Icon(Icons.logout_rounded, size: 20),
+        label: const Text(
+          'LOGOUT',
+          style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+        ),
       ),
     );
   }

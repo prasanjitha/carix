@@ -2,10 +2,101 @@ import 'package:flutter/material.dart';
 import '../../generated/assets.dart';
 import '../../theme/app_colors.dart';
 
-class AuthScreen extends StatelessWidget {
+import 'dart:ui';
+import 'package:fluttertoast/fluttertoast.dart';
+import 'package:hive_flutter/hive_flutter.dart';
+import 'login_screen.dart';
+
+class AuthScreen extends StatefulWidget {
   final VoidCallback onNext;
 
   const AuthScreen({super.key, required this.onNext});
+
+  @override
+  State<AuthScreen> createState() => _AuthScreenState();
+}
+
+class _AuthScreenState extends State<AuthScreen> {
+  final TextEditingController _nameController = TextEditingController();
+  final TextEditingController _emailController = TextEditingController();
+  final TextEditingController _passwordController = TextEditingController();
+  bool _isPasswordVisible = false;
+
+  void _createAccount() {
+    final name = _nameController.text.trim();
+    final email = _emailController.text.trim();
+    final password = _passwordController.text.trim();
+
+    if (name.isEmpty || email.isEmpty || password.isEmpty) {
+      final fToast = FToast();
+      fToast.init(context);
+
+      Widget toast = ClipRRect(
+        borderRadius: BorderRadius.circular(24.0),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+          child: Container(
+            padding: const EdgeInsets.symmetric(
+              horizontal: 20.0,
+              vertical: 12.0,
+            ),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(24.0),
+              gradient: LinearGradient(
+                colors: [
+                  AppColors.primary.withValues(alpha: 0.15),
+                  AppColors.primary.withValues(alpha: 0.05),
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              border: Border.all(
+                color: AppColors.primary.withValues(alpha: 0.3),
+                width: 1.5,
+              ),
+            ),
+            child: const Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.error_outline, color: AppColors.primary, size: 20),
+                SizedBox(width: 10.0),
+                Text(
+                  'Please fill all required fields',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+
+      fToast.showToast(
+        child: toast,
+        gravity: ToastGravity.TOP_RIGHT,
+        toastDuration: const Duration(seconds: 3),
+      );
+      return;
+    }
+
+    final userBox = Hive.box('user_box');
+    userBox.put('fullName', name);
+    userBox.put('email', email);
+    userBox.put('password', password); // Added for login check
+    userBox.put('isLoggedIn', true);
+
+    widget.onNext();
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -134,6 +225,7 @@ class AuthScreen extends StatelessWidget {
           _buildShadowTextField(
             shadow: customShadow,
             child: TextField(
+              controller: _nameController,
               keyboardType: TextInputType.name,
               style: const TextStyle(color: Colors.white),
               decoration: InputDecoration(
@@ -173,6 +265,7 @@ class AuthScreen extends StatelessWidget {
           _buildShadowTextField(
             shadow: customShadow,
             child: TextField(
+              controller: _emailController,
               keyboardType: TextInputType.emailAddress,
               style: const TextStyle(
                 color: Colors.white,
@@ -216,7 +309,8 @@ class AuthScreen extends StatelessWidget {
           _buildShadowTextField(
             shadow: customShadow,
             child: TextField(
-              obscureText: true,
+              controller: _passwordController,
+              obscureText: !_isPasswordVisible,
               style: const TextStyle(color: Colors.white), // අකුරු සුදු පාටින්
               decoration: InputDecoration(
                 hintText: 'Password',
@@ -227,9 +321,18 @@ class AuthScreen extends StatelessWidget {
                   Icons.lock_outline,
                   color: Colors.white70,
                 ),
-                suffixIcon: const Icon(
-                  Icons.visibility_off_outlined,
-                  color: Colors.white70,
+                suffixIcon: IconButton(
+                  icon: Icon(
+                    _isPasswordVisible
+                        ? Icons.visibility_outlined
+                        : Icons.visibility_off_outlined,
+                    color: Colors.white70,
+                  ),
+                  onPressed: () {
+                    setState(() {
+                      _isPasswordVisible = !_isPasswordVisible;
+                    });
+                  },
                 ),
                 filled: true,
                 fillColor: Colors.white.withValues(
@@ -282,7 +385,7 @@ class AuthScreen extends StatelessWidget {
               ],
             ),
             child: ElevatedButton(
-              onPressed: onNext,
+              onPressed: _createAccount,
               style: ElevatedButton.styleFrom(
                 minimumSize: const Size(double.infinity, 60),
                 backgroundColor: Colors.transparent,
@@ -297,7 +400,7 @@ class AuthScreen extends StatelessWidget {
               child: const Text(
                 'CREATE ACCOUNT',
                 style: TextStyle(
-                  fontWeight: FontWeight.w800, // තව ටිකක් ඝනකම් කරලා බලන්න
+                  fontWeight: FontWeight.w800,
                   fontSize: 16,
                   color: Colors.white,
                   letterSpacing: 1.2,
@@ -316,7 +419,13 @@ class AuthScreen extends StatelessWidget {
                 style: TextStyle(color: Colors.white),
               ),
               GestureDetector(
-                onTap: () {},
+                onTap: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (context) => const LoginScreen(),
+                    ),
+                  );
+                },
                 child: const Text(
                   'Log In',
                   style: TextStyle(
